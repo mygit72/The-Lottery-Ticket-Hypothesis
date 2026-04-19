@@ -68,6 +68,24 @@ The `results.json` file contains the detailed output of each pruning round. A su
 
 ### 4.2. Visualization
 The following plot illustrates the relationship between the percentage of weights remaining (1 - sparsity) and the test accuracy, as well as the early-stopping iteration. This visualization is crucial for understanding the Lottery Ticket Hypothesis, as it shows how pruning can lead to sparser networks that maintain or even improve performance and training efficiency.
+<img width="640" height="480" alt="image" src="https://github.com/user-attachments/assets/d310510e-3a9c-4336-b5fe-92645be6ccea" />
+
+## Prerequisites
+
+- Python 3.8+
+- pip (Python package manager)
+- Git
+- (Optional) Virtual Environment (venv / conda)
+- Google Colab (for notebook execution)
+
+---
+
+## Dependencies
+
+Install all required Python libraries using:
+
+```bash
+pip install -r requirements.txt
 
 **Analysis of the Plot:**
 
