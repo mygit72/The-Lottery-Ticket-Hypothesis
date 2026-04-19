@@ -78,14 +78,6 @@ The following plot illustrates the relationship between the percentage of weight
 - (Optional) Virtual Environment (venv / conda)
 - Google Colab (for notebook execution)
 
----
-
-## Dependencies
-
-Install all required Python libraries using:
-
-```bash
-pip install -r requirements.txt
 
 **Analysis of the Plot:**
 
