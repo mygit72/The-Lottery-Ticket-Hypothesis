@@ -38,3 +38,8 @@ src/data/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local secrets / scratch notes - never commit these
+New Text Document.txt
+*.token
+.env
