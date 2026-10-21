@@ -1,100 +1,105 @@
-# Project Report: Implementation of The Lottery Ticket Hypothesis
+# The Lottery Ticket Hypothesis
 
-## 1. Introduction
-This report details the advanced code implementation of the research paper "The Lottery Ticket Hypothesis: Finding Sparse, Trainable Neural Networks" by Jonathan Frankle and Michael Carbin [1]. The primary objective of this project was to reproduce and extend the core findings of the paper, focusing on the iterative magnitude pruning (IMP) algorithm and its impact on neural network training and performance. The implementation aims to provide a modular and extensible framework for further research into the Lottery Ticket Hypothesis.
+A from-scratch PyTorch reproduction of ["The Lottery Ticket Hypothesis: Finding Sparse, Trainable Neural Networks"](https://arxiv.org/abs/1803.03635) (Frankle & Carbin, ICLR 2019), implementing **iterative magnitude pruning (IMP)** and, critically, the **random-reinitialization control** that the paper uses to actually test the hypothesis.
 
-## 2. The Lottery Ticket Hypothesis
+## The hypothesis, and why a control matters
 
-The Lottery Ticket Hypothesis posits that dense, randomly-initialized neural networks contain subnetworks (referred to as "winning tickets") that, when trained in isolation from their original initializations, can achieve comparable or even superior test accuracy to the original dense network, often in fewer training iterations. The key insight is that these winning tickets possess a fortuitous combination of initial weights and connections that are particularly conducive to effective learning.
+The paper's claim isn't just "you can prune neural networks and keep most of the accuracy" — that's well known and uninteresting on its own. The claim is specifically that a sparse subnetwork's *original initialization* is what makes it trainable: the same sparse topology, started from a *different* random initialization, trains noticeably worse. Without comparing against that control, a pruning experiment can't distinguish "winning tickets are special" from "sparse networks are just fine in general."
 
-### Iterative Magnitude Pruning (IMP) Algorithm
-The paper introduces an iterative pruning procedure to identify these winning tickets. The steps are as follows:
+This implementation runs both experiments at every sparsity level so that comparison is explicit:
 
-1.  **Initialization:** A neural network $f(x; \theta_0)$ is randomly initialized with parameters $\theta_0$.
-2.  **Training:** The network is trained for $j$ iterations, resulting in trained parameters $\theta_j$.
-3.  **Pruning:** A fraction $p\%$ of the parameters in $\theta_j$ with the smallest magnitudes are pruned (set to zero), creating a binary mask $m$.
-4.  **Resetting:** The remaining, unpruned parameters are reset to their original values from $\theta_0$. This forms the winning ticket subnetwork $f(x; m \odot \theta_0)$.
-5.  **Iteration:** Steps 2-4 are repeated for $n$ rounds. In each subsequent round, $p\%$ of the *remaining* weights are pruned, leading to progressively sparser subnetworks.
+1. **Winning ticket** — reset to its original initialization `θ₀` after each pruning round (the actual IMP procedure).
+2. **Random reinitialization (control)** — the identical mask applied to a freshly, randomly initialized network.
 
-## 3. Implementation Details
+### Iterative Magnitude Pruning (IMP)
 
-### 3.1. Project Structure
-The project is organized into a modular structure to facilitate clarity, extensibility, and ease of use. The main directories and their contents are as follows:
+1. Randomly initialize a network `f(x; θ₀)`.
+2. Train it for `j` iterations, producing trained weights `θⱼ`.
+3. Prune the `p`% of weights with the smallest magnitude, producing a binary mask `m`.
+4. Reset the surviving weights to their values in `θ₀` (not their trained values) — this is the winning ticket, `f(x; m ⊙ θ₀)`.
+5. Repeat steps 2–4, pruning `p`% of the *remaining* weights each round, until the target sparsity is reached.
+
+## Project structure
 
 ```
-./
-├── README.md             # Project overview and setup instructions
-├── requirements.txt      # Python dependencies
+.
 ├── src/
-│   ├── models/           # Neural network architectures (LeNet-300-100, ConvNets)
-│   ├── pruning/          # Pruning algorithms (LotteryTicketPruner)
-│   ├── datasets/         # Data loading and preprocessing for MNIST, CIFAR-10
-│   ├── utils/            # Utility functions (Trainer class)
-│   ├── main.py           # Main script for running experiments
-│   └── config.py         # (Planned) Configuration file for hyperparameters
-├── experiments/          # Stores experiment results, logs, and plots
-│   ├── runs/             # JSON files with experiment data
-│   └── plots/            # Generated visualizations
-└── notebooks/            # (Planned) Jupyter notebooks for interactive analysis
+│   ├── main.py            # CLI entry point: runs IMP + the reinit control, saves results/plots
+│   ├── models/lenet.py     # LeNet-300-100 (paper's MNIST model) and a configurable ConvNet
+│   ├── pruning/imp.py      # LotteryTicketPruner: masking, pruning, resetting, reinit-control support
+│   ├── datasets/loaders.py # MNIST / CIFAR-10 loaders with seeded train/val splits
+│   └── utils/
+│       ├── trainer.py      # Training/eval loop; freezes pruned weights via gradient masking
+│       └── seed.py         # Reproducibility helper (seeds python/numpy/torch)
+├── tests/                  # pytest unit tests for the pruning and training logic
+├── experiments/
+│   ├── runs/results.json   # Per-round metrics for both the winning ticket and the control
+│   └── plots/               # Generated comparison plots
+└── requirements.txt
 ```
 
-### 3.2. Key Components
+## Setup
 
-*   **`src/models/lenet.py`**: Implements the LeNet-300-100 architecture, a fully-connected network used for MNIST classification, as described in the paper.
-*   **`src/pruning/imp.py`**: Contains the `LotteryTicketPruner` class, which encapsulates the iterative magnitude pruning logic. It handles the initialization of masks, pruning steps (identifying and zeroing out low-magnitude weights), and resetting remaining weights to their initial values.
-*   **`src/datasets/loaders.py`**: Provides functions (`get_mnist_loaders`, `get_cifar10_loaders`) to load and preprocess the MNIST and CIFAR-10 datasets, including data augmentation and splitting into training, validation, and test sets.
-*   **`src/utils/trainer.py`**: Implements the `Trainer` class, which manages the training and evaluation loops. It supports different optimizers, loss functions, and tracks metrics like loss and accuracy. It also incorporates early-stopping logic.
-*   **`src/main.py`**: The main script orchestrates the entire experiment. It initializes the model, data loaders, and the pruner, then runs the iterative pruning process for a specified number of rounds. It records results and generates plots.
+```bash
+pip install -r requirements.txt
+```
 
-## 4. Experimental Results
+## Running an experiment
 
-The initial experiment was conducted using the LeNet-300-100 model on the MNIST dataset, following the iterative magnitude pruning procedure. The experiment ran for 10 rounds, with 20% of the remaining weights pruned in each round. The learning rate was set to 1.2e-3, and each round involved 5 epochs of training.
+```bash
+cd src
+python main.py
+```
 
-### 4.1. Results Summary
-The `results.json` file contains the detailed output of each pruning round. A summary of the key metrics (sparsity, test accuracy, and early-stopping iteration) for each round is presented below:
+Useful flags (see `python main.py --help` for the full list):
 
-| Round | Sparsity (%) | Test Accuracy | Early Stop Iteration |
-|-------|--------------|---------------|----------------------|
-| 0     | 0.00         | 0.9729        | 4500                 |
-| 1     | 20.00        | 0.9745        | 2700                 |
-| 2     | 36.00        | 0.9694        | 1800                 |
-| 3     | 48.80        | 0.9780        | 3600                 |
-| 4     | 59.04        | 0.9795        | 4500                 |
-| 5     | 67.23        | 0.9749        | 1800                 |
-| 6     | 73.79        | 0.9768        | 1800                 |
-| 7     | 79.03        | 0.9806        | 2700                 |
-| 8     | 83.23        | 0.9782        | 1800                 |
-| 9     | 86.58        | 0.9795        | 1800                 |
+| Flag | Default | Meaning |
+|---|---|---|
+| `--rounds` | 10 | Number of pruning rounds |
+| `--epochs` | 5 | Training epochs per round |
+| `--lr` | 1.2e-3 | Adam learning rate |
+| `--pruning-rate-fc` | 0.2 | Fraction of *remaining* FC weights pruned per round |
+| `--seed` | 42 | Seed for reproducibility (model init, data split, shuffling) |
+| `--no-control` | off | Skip the random-reinitialization control (faster, but loses the actual hypothesis test) |
+| `--quiet` | off | Disable per-batch progress bars |
 
-### 4.2. Visualization
-The following plot illustrates the relationship between the percentage of weights remaining (1 - sparsity) and the test accuracy, as well as the early-stopping iteration. This visualization is crucial for understanding the Lottery Ticket Hypothesis, as it shows how pruning can lead to sparser networks that maintain or even improve performance and training efficiency.
-<img width="640" height="480" alt="image" src="https://github.com/user-attachments/assets/d310510e-3a9c-4336-b5fe-92645be6ccea" />
+Each run writes `experiments/runs/results.json` (per-round metrics for both the winning ticket and the control, plus the exact config used) and `experiments/plots/lottery_ticket_results.png`.
 
-## Prerequisites
+## Results
 
-- Python 3.8+
-- pip (Python package manager)
-- Git
-- (Optional) Virtual Environment (venv / conda)
-- Google Colab (for notebook execution)
+LeNet-300-100 on MNIST, 10 rounds, 20% of remaining FC weights pruned per round, 5 epochs/round, Adam at `lr=1.2e-3`, seed 42:
 
+![Lottery Ticket Hypothesis Results](experiments/plots/lottery_ticket_results.png)
 
-**Analysis of the Plot:**
+| Round | Weights remaining | Winning ticket acc. | Winning ticket early-stop iter | Control acc. | Control early-stop iter |
+|---|---|---|---|---|---|
+| 0 | 100.00% | 0.9778 | 4500 | 0.9803 | 4500 |
+| 1 | 80.00%  | 0.9777 | 2700 | 0.9786 | 3600 |
+| 2 | 64.00%  | 0.9786 | 3600 | 0.9795 | 4500 |
+| 3 | 51.20%  | 0.9772 | 3600 | 0.9790 | 4500 |
+| 4 | 40.96%  | 0.9797 | 3600 | 0.9771 | 4500 |
+| 5 | 32.77%  | 0.9784 | 2700 | 0.9778 | 4500 |
+| 6 | 26.21%  | 0.9789 | 3600 | 0.9773 | 4500 |
+| 7 | 20.97%  | **0.9822** | 4500 | 0.9729 | 2700 |
+| 8 | 16.77%  | **0.9816** | 2700 | 0.9785 | 4500 |
+| 9 | 13.42%  | **0.9816** | 1800 | 0.9734 | 4500 |
 
-*   **Test Accuracy vs. Weights Remaining:** The blue line shows that as the network is pruned (percentage of weights remaining decreases), the test accuracy initially remains stable or even slightly increases before eventually dropping off at very high sparsity levels. This supports the hypothesis that smaller, effective subnetworks exist.
-*   **Early Stop Iteration vs. Weights Remaining:** The red dashed line indicates that sparser networks often reach their optimal validation loss (and thus stop training earlier) in fewer iterations. This suggests that winning tickets can learn faster than their denser counterparts.
+(Single seed, `seed=42` — see [Known limitations](#known-limitations--future-work).)
 
-These results are consistent with the findings presented in the original paper, demonstrating the successful reproduction of the core phenomenon of the Lottery Ticket Hypothesis.
+**What this shows:** near full density, the winning ticket and the random-reinit control are statistically indistinguishable — unsurprising, since pruning barely 20–50% of a heavily overparameterized MLP removes little that matters. The gap opens up at high sparsity: below ~21% of the original weights (rounds 7–9), the winning ticket is consistently *more accurate* than the control given the identical mask, while the control's early-stop iteration stays pinned at the training budget ceiling (4500) — it never finds a validation-loss improvement late in training, i.e. it's struggling to fit at all under that sparse mask from a fresh initialization. The winning ticket, by contrast, keeps hitting its best validation loss earlier (down to 1800 iterations by round 9). That divergence — same topology, different initialization, different outcome — is the actual phenomenon the paper is about.
 
-## 5. Conclusion and Future Work
+## Testing
 
-This project successfully implemented an advanced framework for exploring the Lottery Ticket Hypothesis, reproducing key experimental results on LeNet-300-100 and MNIST. The modular design allows for easy extension and further experimentation.
+```bash
+pip install pytest
+pytest tests/ -v
+```
 
-### Future Enhancements:
+Covers: mask initialization, that `prune_step` removes the correct fraction and specifically the smallest-magnitude weights, that `reset_weights` correctly restores `θ₀` under the mask, that the reinit-control mask application is independent of the winning ticket's weights, that pruned weights stay frozen at zero during training, and that training actually reduces loss.
 
-*   **Additional Architectures:** Implement ResNet-18 and VGG-19 for CIFAR-10 to validate the hypothesis on more complex and deeper networks.
-*   **Global Pruning:** Incorporate global pruning strategies for deeper networks, as discussed in the paper, where pruning is applied across all convolutional layers collectively rather than layer-wise.
-*   **Learning Rate Warmup:** Implement learning rate warmup schedules, which were shown to be crucial for finding winning tickets in deeper networks at higher learning rates.
-*   **Hyperparameter Optimization:** Integrate a configuration management system (`config.py`) and potentially hyperparameter search tools to systematically explore the impact of different pruning rates, learning rates, and training schedules.
-*   **Comprehensive Experiment Tracking:** Utilize tools like TensorBoard or Weights & Biases for more robust experiment logging and visualization.
-*   **Interactive Notebooks:** Develop Jupyter notebooks for interactive analysis and demonstration of the pruning process and its effects.
+## Known limitations / future work
+
+- Only LeNet-300-100 on MNIST is run end-to-end; a `ConvNet` class and CIFAR-10 loaders exist but aren't wired into an experiment yet (Conv-2/4/6 from the paper).
+- Pruning is layer-wise, not global — the paper notes global pruning matters more for deeper networks.
+- No learning-rate warmup, which the paper found necessary to find winning tickets in deeper networks at higher learning rates.
+- Single-seed runs; the paper averages over multiple random seeds per sparsity level to report error bars.

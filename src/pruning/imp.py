@@ -89,3 +89,18 @@ class LotteryTicketPruner:
             for name, module in self.model.named_modules():
                 if isinstance(module, (nn.Linear, nn.Conv2d)):
                     module.weight.mul_(self.masks[name])
+
+    def apply_mask_to_model(self, model):
+        """
+        Applies the current pruning masks to an arbitrary model that shares the
+        same architecture (and therefore the same module names), in place.
+
+        This is how the random-reinitialization control is built: take a freshly
+        initialized copy of the model, carve out the same subnetwork (mask) as
+        the winning ticket, and compare how it trains starting from random
+        weights instead of the winning ticket's original initialization theta_0.
+        """
+        with torch.no_grad():
+            for name, module in model.named_modules():
+                if name in self.masks:
+                    module.weight.mul_(self.masks[name])

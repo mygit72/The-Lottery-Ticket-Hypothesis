@@ -12,28 +12,34 @@ class Trainer:
         self.device = device
         self.criterion = nn.CrossEntropyLoss()
 
-    def train(self, optimizer, epochs, pruner=None):
+    def train(self, optimizer, epochs, masks=None, verbose=True):
+        """
+        Trains the model. If `masks` (a dict of module_name -> mask tensor) is
+        given, pruned weights are frozen at zero by zeroing their gradients
+        before every optimizer step, as required by iterative magnitude pruning.
+        """
         history = {'train_loss': [], 'val_loss': [], 'val_acc': [], 'early_stop_iter': 0}
         best_val_loss = float('inf')
         total_iters = 0
-        
+
         for epoch in range(epochs):
             self.model.train()
             running_loss = 0.0
-            for inputs, targets in self.train_loader:
+            loader = tqdm(self.train_loader, desc=f"Epoch {epoch + 1}/{epochs}", leave=False) if verbose else self.train_loader
+            for inputs, targets in loader:
                 inputs, targets = inputs.to(self.device), targets.to(self.device)
-                
+
                 optimizer.zero_grad()
                 outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
                 loss.backward()
-                
-                # Apply masks to gradients if pruner is provided
-                if pruner:
+
+                # Freeze pruned weights by zeroing their gradients
+                if masks:
                     for name, module in self.model.named_modules():
-                        if name in pruner.masks:
-                            module.weight.grad.mul_(pruner.masks[name])
-                
+                        if name in masks:
+                            module.weight.grad.mul_(masks[name])
+
                 optimizer.step()
                 running_loss += loss.item()
                 total_iters += 1
